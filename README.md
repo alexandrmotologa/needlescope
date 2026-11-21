@@ -1,6 +1,23 @@
-# needlescope
+<p align="center">
+  <img src="docs/images/logo.png" alt="needlescope Logo" width="130" style="border-radius: 24px;" />
+</p>
 
-Long-Context Attention Degradation Profiler and Semantic Salience Re-Arranger in Go.
+<h1 align="center">needlescope</h1>
+
+<p align="center">
+  <strong>High-Throughput Attention Degradation Profiler and Semantic Salience Re-Arranger for Large-Context LLMs</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/go-1.22+-00ADD8.svg?style=flat&logo=go" alt="Go Version" />
+  <img src="https://img.shields.io/badge/memory-%3C%2020MB%20RAM-emerald.svg?style=flat" alt="Memory Guarantee" />
+  <img src="https://img.shields.io/badge/recall%20lift-up%20to%20%2B52%25-blue.svg?style=flat" alt="Recall Lift" />
+  <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat" alt="License" />
+</p>
+
+<p align="center">
+  <img src="docs/images/needlescope_demo.gif" alt="needlescope Web Cockpit Live Demo" width="100%" />
+</p>
 
 `needlescope` profiles attention degradation across 128k to 1M token context windows, maps empirical retrieval blind spots on a 2D grid (Context Length vs Token Depth), and provides a low-latency proxy that eliminates the "Lost in the Middle" phenomenon through mathematical U-shaped salience re-ordering.
 
@@ -109,6 +126,19 @@ needlescope cockpit --port 8585
 ```
 
 Open `http://localhost:8585` in your browser to inspect 2D heatmaps, view U-curve regression parabolas, run live benchmarks, observe the Attention Gradient Spectrum simulator, and test the real-time prompt re-arranger playground.
+
+#### Multi-Device Responsive Interface
+
+The embedded cockpit adapts to desktop monitors, tablets, and mobile devices without external CSS dependencies:
+
+<p align="center">
+  <img src="docs/images/needlescope_cockpit_desktop.png" alt="needlescope Cockpit Desktop View" width="100%" />
+</p>
+
+<p align="center">
+  <img src="docs/images/needlescope_cockpit_tablet.png" alt="needlescope Cockpit Tablet View" width="49%" />
+  <img src="docs/images/needlescope_cockpit_mobile.png" alt="needlescope Cockpit Mobile View" width="49%" />
+</p>
 
 ### 5. Evaluate an Existing Prompt File
 
