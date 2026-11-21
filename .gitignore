@@ -1,0 +1,24 @@
+# Binaries
+/bin/
+/dist/
+/needlescope
+needlescope.exe
+
+# Output reports and evaluation artifacts
+/reports/
+*.prof
+*.pprof
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp

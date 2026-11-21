@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>needlescope | Long-Context Attention Degradation Cockpit</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo-badge">NS</span>
+        <div class="brand-text">
+          <h1>needlescope</h1>
+          <span class="brand-sub">Attention Degradation Profiler &amp; Salience Re-Arranger</span>
+        </div>
+      </div>
+
+      <div class="top-metrics">
+        <div class="metric-card">
+          <span class="metric-label">Overall Recall</span>
+          <span class="metric-val text-green" id="metric-overall">--%</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Attention Valley (Middle)</span>
+          <span class="metric-val text-red" id="metric-middle">--%</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Primacy / Recency</span>
+          <span class="metric-val text-cyan" id="metric-edges">--% / --%</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Degradation Delta</span>
+          <span class="metric-val text-amber" id="metric-delta">--%</span>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <div class="status-indicator" id="status-badge">
+          <span class="dot"></span> <span id="status-text">Ready</span>
+        </div>
+        <button class="btn btn-secondary" id="btn-export-json">Export JSON</button>
+        <button class="btn btn-secondary" id="btn-export-csv">Export CSV</button>
+        <button class="btn btn-primary" id="btn-open-benchmark">Run Benchmark</button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="workspace">
+      <!-- Left Column: 2D Heatmap & U-Curve -->
+      <section class="panel matrix-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <h2>2D Attention Recall Matrix</h2>
+            <span class="panel-subtitle">Context Length ($L$) vs Token Insertion Depth ($d$)</span>
+          </div>
+          <div class="legend">
+            <span class="legend-item"><span class="legend-box bg-green"></span> 100%</span>
+            <span class="legend-item"><span class="legend-box bg-yellow"></span> &ge; 70%</span>
+            <span class="legend-item"><span class="legend-box bg-orange"></span> &ge; 50%</span>
+            <span class="legend-item"><span class="legend-box bg-red"></span> &lt; 50%</span>
+          </div>
+        </div>
+
+        <div class="matrix-canvas-wrapper">
+          <canvas id="matrix-canvas"></canvas>
+          <div id="matrix-tooltip" class="matrix-tooltip hidden"></div>
+        </div>
+
+        <!-- U-Curve Parabola Chart -->
+        <div class="ucurve-section">
+          <div class="ucurve-header">
+            <h3>U-Curve Attention Attenuation Profile</h3>
+            <div class="ucurve-stats" id="ucurve-stats">
+              <span>Fit: <strong id="fit-formula">R(d) = &alpha;(d-0.5)&sup2; + &gamma;</strong></span>
+              <span>&alpha;: <strong id="val-alpha">--</strong></span>
+              <span>R&sup2;: <strong id="val-r2">--</strong></span>
+              <span id="blindspot-badge" class="badge-alert hidden">Blind Spot: <strong id="val-blindspot">--</strong></span>
+            </div>
+          </div>
+          <div class="ucurve-chart-wrapper">
+            <svg id="ucurve-svg" viewBox="0 0 760 180" preserveAspectRatio="none"></svg>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Cell Inspector & Live Re-Arranger -->
+      <aside class="sidebar">
+        <!-- Coordinate Inspector Card -->
+        <div class="panel inspector-panel">
+          <div class="panel-header">
+            <h3>Coordinate Inspector</h3>
+            <span class="cell-coords-tag" id="inspect-coords">Hover over cell</span>
+          </div>
+          <div class="inspector-body" id="inspector-content">
+            <div class="empty-state">Hover or click any cell in the 2D matrix to inspect trial telemetry, latency, and model outputs.</div>
+          </div>
+        </div>
+
+        <!-- Live Semantic Salience Re-Arranger Playground -->
+        <div class="panel playground-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <h3>Salience Re-Arranger Playground</h3>
+              <span class="panel-subtitle">Eliminate "Lost in the Middle" by U-mapping chunks</span>
+            </div>
+          </div>
+
+          <div class="playground-form">
+            <div class="form-group">
+              <label for="play-query">User Query / Retrieval Target</label>
+              <input type="text" id="play-query" placeholder="e.g. What is the Project Aegis confidential access key?">
+            </div>
+
+            <div class="form-group">
+              <label for="play-context">Context Document (Markdown, paragraphs, or XML)</label>
+              <textarea id="play-context" rows="6" placeholder="Paste multi-chunk context text here..."></textarea>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="play-strategy">Reordering Strategy</label>
+                <select id="play-strategy">
+                  <option value="u-shaped" selected>U-Shaped (Optimal Attention)</option>
+                  <option value="recency-biased">Recency-Biased</option>
+                  <option value="original">Original (Baseline)</option>
+                </select>
+              </div>
+              <button class="btn btn-primary align-end" id="btn-run-rearrange">Re-Order Context</button>
+            </div>
+          </div>
+
+          <!-- Re-Arranger Results -->
+          <div class="rearrange-results hidden" id="rearrange-results">
+            <div class="results-stats-row">
+              <div class="stat-pill">
+                <span>Chunks:</span> <strong id="res-chunk-count">0</strong>
+              </div>
+              <div class="stat-pill text-green">
+                <span>Middle Evicted:</span> <strong id="res-evicted-count">0</strong>
+              </div>
+              <div class="stat-pill text-cyan">
+                <span>Est. Recall:</span> <strong id="res-recall-gain">52% &rarr; 96%</strong>
+              </div>
+            </div>
+
+            <div class="chunks-timeline" id="chunks-timeline">
+              <!-- Dynamically populated chunk cards -->
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Benchmark Launcher Modal -->
+    <div class="modal-overlay hidden" id="benchmark-modal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Launch 2D Attention Benchmark</h3>
+          <button class="btn-close" id="btn-close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="bm-provider">Provider</label>
+              <select id="bm-provider">
+                <option value="mock" selected>High-Fidelity Mock LLM (Deterministic)</option>
+                <option value="openai">OpenAI / vLLM / Ollama</option>
+                <option value="anthropic">Anthropic Messages API</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="bm-model">Model Name</label>
+              <input type="text" id="bm-model" value="mock-evaluator-v1">
+            </div>
+          </div>
+
+          <div class="form-row" id="openai-options" style="display:none;">
+            <div class="form-group flex-2">
+              <label for="bm-endpoint">API Endpoint</label>
+              <input type="text" id="bm-endpoint" value="http://localhost:8000/v1">
+            </div>
+            <div class="form-group flex-1">
+              <label for="bm-apikey">API Key</label>
+              <input type="password" id="bm-apikey" placeholder="Bearer sk-...">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="bm-type">Evaluation Type</label>
+              <select id="bm-type">
+                <option value="single" selected>Single Needle Retrieval</option>
+                <option value="multi">Multi-Needle Aggregation</option>
+                <option value="multi-hop">Multi-Hop Dependency Chain</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label for="bm-domain">Haystack Corpus Domain</label>
+              <select id="bm-domain">
+                <option value="finance" selected>SEC Financial 10-K Filings</option>
+                <option value="legal">Legal Master Services Agreements</option>
+                <option value="technical">Technical Cloud Architecture</option>
+                <option value="healthcare">Clinical Health Records</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="bm-trials">Trials per Coordinate</label>
+              <input type="number" id="bm-trials" value="2" min="1" max="10">
+            </div>
+            <div class="form-group flex-1">
+              <label for="bm-concurrency">Concurrency</label>
+              <input type="number" id="bm-concurrency" value="4" min="1" max="16">
+            </div>
+          </div>
+
+          <div class="benchmark-progress-bar hidden" id="benchmark-progress-box">
+            <div class="progress-labels">
+              <span id="bm-progress-text">Executing sweep...</span>
+              <span id="bm-progress-percent">0%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" id="bm-progress-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btn-cancel-modal">Cancel</button>
+          <button class="btn btn-danger hidden" id="btn-stop-benchmark">Stop Run</button>
+          <button class="btn btn-primary" id="btn-start-benchmark">Start Sweep</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+Item 7. Management's Discussion and Analysis of Financial Condition and Results of Operations.
+
+Consolidated operating revenues for the fiscal year reached $1,842.5 million, representing a 12.3 percent expansion over the previous period. Operating margins widened by 140 basis points, supported by increased recurring contract values and disciplined infrastructure expenditures across hybrid deployment regions.
+
+Note 12. Derivative Financial Instruments and Hedging Activities.
+The company enters into forward foreign exchange contracts to manage currency risks associated with anticipated cross-border cash flows. Gross notional positions in foreign currency instruments totaled $340.0 million at fiscal year end. Bilateral collateralization agreements govern all open positions.
+
+CONFIDENTIAL AUDIT NOTE:
+The primary administrative clearance token for the Q3 audit verification ledger is AUTH-LEDGER-99420-OMEGA.
+
+Note 18. Commitments and Contingencies.
+Legal proceedings initiated in the southern district regarding enterprise licensing rights remain pending. Based on consultation with independent legal counsel, management believes the final resolution will not have a material adverse impact on consolidated cash flows or liquidity.
+
+Capital Resources and Liquidity.
+Cash and cash equivalents totaled $512.4 million at year end. Working capital remained stable at $680.1 million. The revolving credit facility provides up to $300.0 million in additional liquidity through 2029.
+
+QUERY:
+What is the primary administrative clearance token for the Q3 audit verification ledger?
