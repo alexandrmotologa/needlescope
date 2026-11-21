@@ -50,66 +50,89 @@ body {
   padding: 12px 24px;
   background-color: var(--bg-surface);
   border-bottom: 1px solid var(--border-subtle);
-  gap: 20px;
+  gap: 16px;
+  min-height: 56px;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .logo-badge {
   background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
   color: #fff;
   font-weight: 800;
-  font-size: 14px;
-  padding: 6px 10px;
+  font-size: 13px;
+  padding: 5px 9px;
   border-radius: 6px;
   font-family: var(--font-mono);
   box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
+  flex-shrink: 0;
 }
 
 .brand-text h1 {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .brand-sub {
   font-size: 11px;
   color: var(--text-muted);
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
-.top-metrics {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 1;
-  justify-content: center;
+/* Executive Telemetry Strip */
+.telemetry-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 10px 24px;
+  background-color: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .metric-card {
   background-color: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  padding: 6px 14px;
+  padding: 7px 14px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  transition: border-color 0.15s ease;
+}
+
+.metric-card:hover {
+  border-color: var(--border-focus);
 }
 
 .metric-label {
   font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--text-muted);
   letter-spacing: 0.05em;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .metric-val {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   font-family: var(--font-mono);
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 .text-green { color: var(--accent-green); }
@@ -121,26 +144,53 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
+}
+
+.export-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--bg-card);
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.export-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-right: 2px;
+  padding-left: 4px;
+  white-space: nowrap;
 }
 
 .status-indicator {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-secondary);
-  padding: 4px 10px;
+  padding: 5px 11px;
   background-color: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .status-indicator .dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background-color: var(--accent-green);
   box-shadow: 0 0 6px var(--accent-green);
+  flex-shrink: 0;
 }
 
 .status-indicator.streaming .dot {
@@ -159,19 +209,37 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.2;
   padding: 7px 14px;
   border-radius: 6px;
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s ease;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.btn-sm {
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.btn-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 .btn-primary {
   background-color: var(--accent-cyan);
   color: #041019;
+  border-color: var(--accent-cyan);
 }
 .btn-primary:hover {
   background-color: #22d3ee;
@@ -718,7 +786,7 @@ body {
   transition: width 0.2s ease;
 }
 
-/* Responsive / Mobile & Tablet Adaptability */
+/* Responsive & Adaptive Layout Invariants */
 @media (max-width: 1200px) {
   .workspace {
     grid-template-columns: 1fr;
@@ -730,50 +798,119 @@ body {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 992px) {
   .topbar {
-    flex-wrap: wrap;
+    padding: 10px 18px;
     gap: 12px;
   }
-  .top-metrics {
-    order: 3;
-    width: 100%;
-    justify-content: flex-start;
-    overflow-x: auto;
-    padding-bottom: 4px;
+  .brand-sub {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .telemetry-strip {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 10px 18px;
+    gap: 10px;
   }
   .sidebar {
     grid-template-columns: 1fr;
   }
   .matrix-canvas-wrapper {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     justify-content: flex-start;
+  }
+  #matrix-canvas {
+    min-width: 600px;
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    gap: 10px;
+  }
+  .brand {
+    flex: 1;
+  }
+  .brand-sub {
+    display: none;
+  }
+  .top-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .export-group {
+    padding: 2px 4px;
+  }
+  .export-label {
+    display: none;
+  }
+  .workspace {
+    padding: 12px 14px;
+    gap: 12px;
+  }
+  .telemetry-strip {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 8px 14px;
+    gap: 8px;
+  }
+  .metric-card {
+    padding: 6px 10px;
+  }
+  .metric-val {
+    font-size: 14px;
+  }
+  .modal-card {
+    width: 95vw;
+  }
+}
+
+@media (max-width: 480px) {
   body {
     font-size: 12px;
   }
   .topbar {
-    padding: 10px 14px;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px 12px;
+    gap: 8px;
   }
-  .workspace {
-    padding: 10px 12px;
-  }
-  .top-metrics {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+  .brand {
+    justify-content: space-between;
   }
   .top-actions {
+    display: flex;
+    justify-content: space-between;
     width: 100%;
-    justify-content: flex-end;
-    flex-wrap: wrap;
   }
-  .modal-card {
-    width: 94vw;
+  .export-group {
+    flex: 1;
+    justify-content: center;
+  }
+  .btn-primary {
+    flex: 1;
+  }
+  .telemetry-strip {
+    grid-template-columns: 1fr 1fr;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .metric-card {
+    padding: 6px 8px;
+  }
+  .metric-label {
+    font-size: 9px;
+  }
+  .metric-val {
+    font-size: 13px;
   }
   .form-row {
     flex-direction: column;
+  }
+  .align-end {
+    align-self: stretch;
   }
 }

@@ -18,35 +18,42 @@
         </div>
       </div>
 
-      <div class="top-metrics">
-        <div class="metric-card">
-          <span class="metric-label">Overall Recall</span>
-          <span class="metric-val text-green" id="metric-overall">--%</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-label">Attention Valley (Middle)</span>
-          <span class="metric-val text-red" id="metric-middle">--%</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-label">Primacy / Recency</span>
-          <span class="metric-val text-cyan" id="metric-edges">--% / --%</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-label">Degradation Delta</span>
-          <span class="metric-val text-amber" id="metric-delta">--%</span>
-        </div>
-      </div>
-
       <div class="top-actions">
         <div class="status-indicator" id="status-badge">
           <span class="dot"></span> <span id="status-text">Ready</span>
         </div>
-        <button class="btn btn-secondary" id="btn-export-json">Export JSON</button>
-        <button class="btn btn-secondary" id="btn-export-csv">Export CSV</button>
-        <button class="btn btn-secondary" id="btn-export-html">Export HTML</button>
-        <button class="btn btn-primary" id="btn-open-benchmark">Run Benchmark</button>
+        <div class="export-group">
+          <span class="export-label">Export</span>
+          <button class="btn btn-secondary btn-sm" id="btn-export-json" title="Export Raw JSON Matrix">JSON</button>
+          <button class="btn btn-secondary btn-sm" id="btn-export-csv" title="Export CSV Matrix">CSV</button>
+          <button class="btn btn-secondary btn-sm" id="btn-export-html" title="Export Standalone HTML Report">HTML</button>
+        </div>
+        <button class="btn btn-primary" id="btn-open-benchmark">
+          <svg class="btn-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Run Benchmark
+        </button>
       </div>
     </header>
+
+    <!-- Executive Telemetry Strip -->
+    <section class="telemetry-strip" aria-label="Live Telemetry Overview">
+      <div class="metric-card">
+        <span class="metric-label">Overall Recall</span>
+        <span class="metric-val text-green" id="metric-overall">--%</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Attention Valley (Middle)</span>
+        <span class="metric-val text-red" id="metric-middle">--%</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Primacy / Recency</span>
+        <span class="metric-val text-cyan" id="metric-edges">--% / --%</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Degradation Delta</span>
+        <span class="metric-val text-amber" id="metric-delta">--%</span>
+      </div>
+    </section>
 
     <!-- Main Workspace -->
     <main class="workspace">
