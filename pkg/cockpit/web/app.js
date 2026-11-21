@@ -58,6 +58,9 @@
   // Exports
   const btnExportJson = document.getElementById('btn-export-json');
   const btnExportCsv = document.getElementById('btn-export-csv');
+  const btnExportHtml = document.getElementById('btn-export-html');
+  const bmPreset = document.getElementById('bm-preset');
+  const spectrumMarkers = document.getElementById('spectrum-markers');
 
   // Load initial dataset
   async function loadInitialReport() {
@@ -487,6 +490,33 @@
     }
   });
 
+  if (bmPreset) {
+    bmPreset.addEventListener('change', () => {
+      const p = bmPreset.value;
+      if (p === 'gpt-4o') {
+        bmProvider.value = 'openai';
+        document.getElementById('bm-model').value = 'gpt-4o';
+        openaiOptions.style.display = 'flex';
+      } else if (p === 'claude-3-5-sonnet') {
+        bmProvider.value = 'anthropic';
+        document.getElementById('bm-model').value = 'claude-3-5-sonnet-20241022';
+        openaiOptions.style.display = 'none';
+      } else if (p === 'llama-3.1-70b') {
+        bmProvider.value = 'mock';
+        document.getElementById('bm-model').value = 'meta-llama/Llama-3.1-70B-Instruct';
+        openaiOptions.style.display = 'none';
+      } else if (p === 'gemini-1-5-pro') {
+        bmProvider.value = 'mock';
+        document.getElementById('bm-model').value = 'gemini-1.5-pro';
+        openaiOptions.style.display = 'none';
+      } else if (p === 'qwen-2.5-72b') {
+        bmProvider.value = 'mock';
+        document.getElementById('bm-model').value = 'Qwen/Qwen2.5-72B-Instruct';
+        openaiOptions.style.display = 'none';
+      }
+    });
+  }
+
   btnStartBenchmark.addEventListener('click', async () => {
     const config = {
       provider: bmProvider.value,
@@ -560,6 +590,8 @@
       resRecallGain.textContent = `${(res.estimated_baseline_recall * 100).toFixed(0)}% → ${(res.estimated_reordered_recall * 100).toFixed(0)}%`;
 
       chunksTimeline.innerHTML = '';
+      if (spectrumMarkers) spectrumMarkers.innerHTML = '';
+
       res.reordered_chunks.forEach((ch, idx) => {
         const card = document.createElement('div');
         card.className = 'chunk-card';
@@ -569,7 +601,7 @@
 
         card.innerHTML = `
           <div style="flex:1; margin-right:12px;">
-            <div class="chunk-pos">Slot #${idx + 1} (Depth: ${(ch.new_depth * 100).toFixed(0)}%) &bull; Orig Depth: ${(ch.original_depth * 100).toFixed(0)}%</div>
+            <div class="chunk-pos">Slot #${idx + 1} (New Depth: ${(ch.new_depth * 100).toFixed(0)}%) &bull; Orig Depth: ${(ch.original_depth * 100).toFixed(0)}% ${ch.is_protected ? '<span style="color:var(--accent-cyan); font-weight:bold;">[SHIELD PROTECTED]</span>' : ''}</div>
             <div style="color:var(--text-secondary); margin-top:2px;">${escapeHtml(ch.content.substring(0, 110))}...</div>
           </div>
           <div>
@@ -577,6 +609,25 @@
           </div>
         `;
         chunksTimeline.appendChild(card);
+
+        // Render markers on spectrum timeline
+        if (spectrumMarkers) {
+          const origPin = document.createElement('div');
+          origPin.className = 'marker-pin marker-orig';
+          origPin.style.left = `${Math.min(99, Math.max(1, ch.original_depth * 100))}%`;
+          origPin.title = `Chunk #${idx+1} Original Depth: ${(ch.original_depth*100).toFixed(0)}%`;
+          spectrumMarkers.appendChild(origPin);
+
+          const newPin = document.createElement('div');
+          newPin.className = 'marker-pin marker-new';
+          newPin.style.left = `${Math.min(99, Math.max(1, ch.new_depth * 100))}%`;
+          newPin.title = `Chunk #${idx+1} Reordered Depth: ${(ch.new_depth*100).toFixed(0)}% (BM25: ${ch.salience_score.toFixed(2)})`;
+          if (isSalient) {
+            newPin.style.backgroundColor = '#10b981';
+            newPin.style.boxShadow = '0 0 6px #10b981';
+          }
+          spectrumMarkers.appendChild(newPin);
+        }
       });
     } catch (err) {
       alert('Re-arrangement failed: ' + err.message);
@@ -597,6 +648,12 @@
   btnExportCsv.addEventListener('click', () => {
     window.location.href = '/api/export/csv';
   });
+
+  if (btnExportHtml) {
+    btnExportHtml.addEventListener('click', () => {
+      window.location.href = '/api/export/html';
+    });
+  }
 
   function escapeHtml(str) {
     if (!str) return '';

@@ -67,18 +67,27 @@ The client interface abstracts model invocation across different backends:
 ### 2.5 Salience Re-Arranger Reverse Proxy (`pkg/rearranger/`)
 The proxy intercepts `/v1/chat/completions` requests:
 1. Extracts context documents and the terminal user query.
-2. Segments the context into semantic chunks based on markdown headings or paragraph breaks.
+2. Segments the context into semantic chunks using the **Boundary Shield**, which guarantees Markdown tables (`| ... |`), fenced code blocks (` ```...``` `), and XML elements remain unfragmented within atomic chunks.
 3. Ranks chunks by query relevance using an in-memory BM25 scorer with phrase boosting.
 4. Distributes chunks according to the mathematical U-distribution:
    - Rank 1 (highest salience) is placed in the recency position (end of context, before the query).
    - Rank 2 is placed in the primacy position (start of context, after system instructions).
    - Subsequent chunks alternate toward the center, leaving low-salience background text in the attention valley.
 5. Proxies the reorganized request to the upstream LLM and streams the response back.
+6. When `--shadow` mode is active, dispatches asynchronous dual-inference queries of the original prompt to compute live recall and latency lift in production without user disruption.
 
-### 2.6 Embedded Cockpit (`pkg/cockpit/`)
+### 2.6 Quality Gate Engine (`pkg/profiler/gate.go`)
+Automates SLA assertions for CI/CD pipelines. Evaluates candidate model degradation profiles against specified limits:
+- Minimum middle-valley recall threshold ($0.35 \le d \le 0.65$).
+- Maximum allowed edge-to-valley degradation delta.
+- Maximum contiguous blind-spot width.
+Returns exit code 0 on PASS, or exit code 1 to halt pipeline deployments when attention regressions occur.
+
+### 2.7 Embedded Cockpit (`pkg/cockpit/`)
 The cockpit serves on port 8585 using Go standard library embedded files:
 - Interactive HTML5 canvas rendering the 2D degradation heatmap.
 - Vector SVG charts showing empirical U-curves and fitted regression lines.
+- Attention Gradient Spectrum Simulator visually projecting chunk positions onto the model attention window.
 - Coordinate inspector displaying trial samples, model responses, and latency metrics.
 - Live Re-Arranger playground for testing custom context inputs, showing chunk rankings and layout diffs.
 - Server-Sent Events (SSE) stream for real-time progress updates during benchmark sweeps.

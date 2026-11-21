@@ -43,6 +43,7 @@
         </div>
         <button class="btn btn-secondary" id="btn-export-json">Export JSON</button>
         <button class="btn btn-secondary" id="btn-export-csv">Export CSV</button>
+        <button class="btn btn-secondary" id="btn-export-html">Export HTML</button>
         <button class="btn btn-primary" id="btn-open-benchmark">Run Benchmark</button>
       </div>
     </header>
@@ -146,6 +147,27 @@
               </div>
             </div>
 
+            <!-- Attention Spectrum Timeline Simulator -->
+            <div class="spectrum-container">
+              <div class="spectrum-label-row">
+                <span class="spectrum-lbl text-cyan">Primacy (0%)</span>
+                <span class="spectrum-lbl text-red">Attention Valley (35%-65%)</span>
+                <span class="spectrum-lbl text-cyan">Recency (100%)</span>
+              </div>
+              <div class="spectrum-bar-wrap">
+                <div class="spectrum-bar">
+                  <div class="zone-tag tag-p">95%</div>
+                  <div class="zone-tag tag-v">~40%</div>
+                  <div class="zone-tag tag-r">98%</div>
+                </div>
+                <div id="spectrum-markers" class="spectrum-markers"></div>
+              </div>
+              <div class="spectrum-legend">
+                <span><span class="pin-sample pin-orig"></span> Original Depth</span>
+                <span><span class="pin-sample pin-new"></span> Reordered (U-Shape)</span>
+              </div>
+            </div>
+
             <div class="chunks-timeline" id="chunks-timeline">
               <!-- Dynamically populated chunk cards -->
             </div>
@@ -162,6 +184,20 @@
           <button class="btn-close" id="btn-close-modal">&times;</button>
         </div>
         <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="bm-preset">Frontier Model Preset</label>
+              <select id="bm-preset">
+                <option value="" selected>Custom / Manual Configuration</option>
+                <option value="gpt-4o">OpenAI GPT-4o (8k - 128k)</option>
+                <option value="claude-3-5-sonnet">Claude 3.5 Sonnet (16k - 200k)</option>
+                <option value="llama-3.1-70b">Meta LLaMA 3.1 70B (8k - 128k)</option>
+                <option value="gemini-1-5-pro">Google Gemini 1.5 Pro (64k - 1M)</option>
+                <option value="qwen-2.5-72b">Alibaba Qwen 2.5 72B (8k - 128k)</option>
+              </select>
+            </div>
+          </div>
+
           <div class="form-row">
             <div class="form-group flex-1">
               <label for="bm-provider">Provider</label>

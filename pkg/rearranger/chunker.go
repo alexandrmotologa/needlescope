@@ -17,6 +17,7 @@ type Chunk struct {
 	SalienceScore float64 `json:"salience_score"`
 	OriginalDepth float64 `json:"original_depth"`
 	NewDepth      float64 `json:"new_depth"`
+	IsProtected   bool    `json:"is_protected,omitempty"` // True if protected by Boundary Shield (table, code block)
 }
 
 // Chunker segments raw context documents into coherent semantic chunks.
@@ -40,9 +41,9 @@ func NewChunker(tok benchmark.Tokenizer, targetChunkTokens int) *Chunker {
 }
 
 var xmlDocRegex = regexp.MustCompile(`(?s)<(?:doc|document|context)[^>]*>(.*?)</(?:doc|document|context)>`)
-var mdHeaderRegex = regexp.MustCompile(`(?m)^(#{1,4}\s+.*)`)
+var fencedCodeRegex = regexp.MustCompile("(?s)```[\\w]*\\n.*?```")
 
-// SplitChunks divides a context body into structured chunks preserving paragraph and section boundaries.
+// SplitChunks divides a context body into structured chunks preserving paragraph, table, and code boundaries.
 func (c *Chunker) SplitChunks(text string) []Chunk {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -68,18 +69,10 @@ func (c *Chunker) SplitChunks(text string) []Chunk {
 		return chunks
 	}
 
-	// 2. Try splitting by double newline paragraphs
-	rawParas := strings.Split(text, "\n\n")
-	var paras []string
-	for _, p := range rawParas {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			paras = append(paras, p)
-		}
-	}
+	// 2. Extract atomic semantic units using Boundary Shield (tables, code blocks, paragraphs)
+	units := c.extractAtomicUnits(text)
 
-	if len(paras) <= 1 {
-		// Single block; split by sentences if long
+	if len(units) <= 1 {
 		return []Chunk{
 			{
 				ID:            0,
@@ -91,33 +84,39 @@ func (c *Chunker) SplitChunks(text string) []Chunk {
 		}
 	}
 
-	// Group paragraphs to match target chunk token count without splitting mid-paragraph
+	// Group atomic units to match target chunk token count without splitting mid-unit
 	var chunks []Chunk
 	var curBuf strings.Builder
 	curTokens := 0
 	chunkIdx := 0
+	chunkHasProtected := false
 
-	for _, p := range paras {
-		pTokens := c.tokenizer.CountTokens(p)
+	for _, unit := range units {
+		unitTokens := c.tokenizer.CountTokens(unit.content)
 
-		if curTokens > 0 && curTokens+pTokens > c.targetChunkTok {
-			// Flush current chunk
+		// If current buffer already has content and adding this unit exceeds target tokens, flush
+		if curTokens > 0 && curTokens+unitTokens > c.targetChunkTok {
 			chunks = append(chunks, Chunk{
 				ID:            chunkIdx,
 				OriginalIndex: chunkIdx,
 				Content:       strings.TrimSpace(curBuf.String()),
 				TokenCount:    curTokens,
+				IsProtected:   chunkHasProtected,
 			})
 			chunkIdx++
 			curBuf.Reset()
 			curTokens = 0
+			chunkHasProtected = false
 		}
 
 		if curBuf.Len() > 0 {
 			curBuf.WriteString("\n\n")
 		}
-		curBuf.WriteString(p)
-		curTokens += pTokens
+		curBuf.WriteString(unit.content)
+		curTokens += unitTokens
+		if unit.isProtected {
+			chunkHasProtected = true
+		}
 	}
 
 	if curBuf.Len() > 0 {
@@ -126,11 +125,103 @@ func (c *Chunker) SplitChunks(text string) []Chunk {
 			OriginalIndex: chunkIdx,
 			Content:       strings.TrimSpace(curBuf.String()),
 			TokenCount:    curTokens,
+			IsProtected:   chunkHasProtected,
 		})
 	}
 
 	c.computeOriginalDepths(chunks)
 	return chunks
+}
+
+type atomicUnit struct {
+	content     string
+	isProtected bool // table or code block
+}
+
+// extractAtomicUnits parses text into structured blocks, shielding tables and code blocks from being split.
+func (c *Chunker) extractAtomicUnits(text string) []atomicUnit {
+	lines := strings.Split(text, "\n")
+	var units []atomicUnit
+
+	var curBlock strings.Builder
+	inCodeBlock := false
+	inTable := false
+
+	flushBlock := func(isProtected bool) {
+		str := strings.TrimSpace(curBlock.String())
+		if str != "" {
+			units = append(units, atomicUnit{content: str, isProtected: isProtected})
+		}
+		curBlock.Reset()
+	}
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Check fenced code block boundary
+		if strings.HasPrefix(trimmed, "```") {
+			if !inCodeBlock {
+				// Flush any preceding standard text
+				if inTable {
+					flushBlock(true)
+					inTable = false
+				} else {
+					flushBlock(false)
+				}
+				inCodeBlock = true
+				curBlock.WriteString(line)
+				curBlock.WriteString("\n")
+				continue
+			} else {
+				// Close code block
+				curBlock.WriteString(line)
+				flushBlock(true)
+				inCodeBlock = false
+				continue
+			}
+		}
+
+		if inCodeBlock {
+			curBlock.WriteString(line)
+			curBlock.WriteString("\n")
+			continue
+		}
+
+		// Check Markdown table line (| ... |)
+		isTableLine := strings.HasPrefix(trimmed, "|") && strings.HasSuffix(trimmed, "|")
+		if isTableLine {
+			if !inTable {
+				flushBlock(false)
+				inTable = true
+			}
+			curBlock.WriteString(line)
+			curBlock.WriteString("\n")
+			continue
+		} else if inTable {
+			// End of table
+			flushBlock(true)
+			inTable = false
+		}
+
+		// Check empty line paragraph separation
+		if trimmed == "" {
+			flushBlock(false)
+			continue
+		}
+
+		if curBlock.Len() > 0 {
+			curBlock.WriteString("\n")
+		}
+		curBlock.WriteString(line)
+	}
+
+	if inCodeBlock || inTable {
+		flushBlock(true)
+	} else {
+		flushBlock(false)
+	}
+
+	return units
 }
 
 func (c *Chunker) computeOriginalDepths(chunks []Chunk) {
@@ -156,10 +247,8 @@ func (c *Chunker) computeOriginalDepths(chunks []Chunk) {
 
 // ExtractPromptContext separates prompt instructions, context body, and the terminal user query.
 func ExtractPromptContext(prompt string) (prefix string, contextBody string, query string) {
-	// Look for standard context tags
 	lower := strings.ToLower(prompt)
 
-	// Check if prompt has "QUERY:" or "QUESTION:" delimiter
 	queryDelims := []string{"\nquery:\n", "\nquery:", "\nquestion:\n", "\nquestion:", "\ninstruction:\n"}
 	queryIdx := -1
 	delimLen := 0
@@ -179,7 +268,6 @@ func ExtractPromptContext(prompt string) (prefix string, contextBody string, que
 		return "", contextBody, query
 	}
 
-	// Fallback: Check for "CONTEXT DOCUMENTS:" prefix
 	contextPrefixes := []string{"context documents:\n\n", "context:\n\n", "documents:\n\n"}
 	for _, cp := range contextPrefixes {
 		if strings.HasPrefix(lower, cp) {

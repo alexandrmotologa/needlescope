@@ -95,6 +95,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/rearrange", s.handleRearrange)
 	mux.HandleFunc("/api/export/json", s.handleExportJSON)
 	mux.HandleFunc("/api/export/csv", s.handleExportCSV)
+	mux.HandleFunc("/api/export/html", s.handleExportHTML)
 
 	s.httpServer = &http.Server{
 		Addr:         addr,
@@ -322,6 +323,15 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=needlescope_matrix_%s.csv", s.report.ID))
 	_ = report.ExportCSV(s.report, w)
+}
+
+func (s *Server) handleExportHTML(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=needlescope_audit_%s.html", s.report.ID))
+	_ = report.ExportHTML(s.report, w)
 }
 
 // generateDefaultReport creates an initial demonstration profile for immediate visualization.

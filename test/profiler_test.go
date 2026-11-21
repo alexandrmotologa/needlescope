@@ -86,3 +86,34 @@ func TestAggregate_And_Reports(t *testing.T) {
 		t.Fatalf("json body missing model name")
 	}
 }
+
+func TestEvaluateGate(t *testing.T) {
+	rep := &profiler.MatrixReport{
+		Model:            "model-under-test",
+		OverallRecall:    0.92,
+		MiddleRecall:     0.85,
+		DegradationDelta: 0.10,
+		CriticalBlindSpot: profiler.BlindSpotWindow{
+			Detected: false,
+			Width:    0.0,
+		},
+	}
+
+	// Case 1: All rules pass
+	resPass := profiler.EvaluateGate(rep, profiler.GateConfig{
+		MinMiddleRecall:     0.80,
+		MaxDegradationDelta: 0.15,
+		MinOverallRecall:    0.85,
+	})
+	if !resPass.Passed {
+		t.Fatalf("expected gate to pass, but failed: %+v", resPass.Assertions)
+	}
+
+	// Case 2: Middle recall below strict threshold
+	resFail := profiler.EvaluateGate(rep, profiler.GateConfig{
+		MinMiddleRecall: 0.90, // actual is 0.85
+	})
+	if resFail.Passed {
+		t.Fatalf("expected gate to fail for min middle recall 0.90")
+	}
+}

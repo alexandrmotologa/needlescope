@@ -24,8 +24,10 @@ needlescope benchmark [flags]
 | `--type` | string | `single` | Needle type: `single`, `multi`, `multi-hop` |
 | `--domain` | string | `finance` | Background corpus: `finance`, `legal`, `technical`, `healthcare` |
 | `--concurrency` | int | `4` | Worker pool routine count |
+| `--preset` | string | `""` | Frontier model preset (`gpt-4o`, `claude-3-5-sonnet`, `llama-3.1-70b`, `gemini-1-5-pro`, `qwen-2.5-72b`) |
 | `--output` | string | `""` | Destination path for JSON report |
 | `--csv` | string | `""` | Destination path for CSV matrix |
+| `--html` | string | `""` | Destination path for standalone HTML executive audit report |
 | `--cockpit` | bool | `false` | Launch embedded web cockpit upon completion |
 | `--port` | int | `8585` | Cockpit port when `--cockpit` is set |
 
@@ -46,6 +48,7 @@ needlescope proxy [flags]
 | `--strategy` | string | `u-shaped` | Reordering strategy: `u-shaped`, `recency-biased`, `original` |
 | `--chunk-size` | int | `350` | Target tokens per document chunk |
 | `--api-key` | string | `$OPENAI_API_KEY` | Default authorization key sent upstream |
+| `--shadow` | bool | `false` | Enable asynchronous dual-inference shadow testing to compare original vs reordered recall |
 
 ---
 
@@ -79,6 +82,25 @@ needlescope evaluate [flags]
 | `--query` | string | `""` | Query to evaluate against |
 | `--strategy` | string | `u-shaped` | Strategy: `u-shaped`, `recency-biased`, `original` |
 | `--output` | string | `""` | Optional destination path for reordered prompt |
+
+---
+
+### 1.5 `needlescope gate`
+Asserts automated CI/CD quality gates on attention degradation reports. Exits with status `0` if all assertions pass, or status `1` on failure.
+
+```bash
+needlescope gate [flags]
+```
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--report` | string | *(required)* | Path to JSON matrix report file |
+| `--min-middle-recall` | float | `0.80` | Minimum allowed recall in the middle valley ($0.35 \le d \le 0.65$) |
+| `--max-degradation-delta` | float | `0.20` | Maximum allowed degradation delta between edges and valley |
+| `--min-overall-recall` | float | `0.85` | Minimum required overall recall across all coordinates |
+| `--max-blindspot-width` | float | `0.15` | Maximum allowed depth span for attention blind spots |
+| `--json` | bool | `false` | Output machine-readable JSON assertions |
 
 ---
 
@@ -143,3 +165,6 @@ Downloads the active matrix profile as formatted JSON.
 
 ### `GET /api/export/csv`
 Downloads the active matrix profile as CSV.
+
+### `GET /api/export/html`
+Downloads a standalone, zero-dependency executive audit report with vector charts and interactive tables in HTML format.

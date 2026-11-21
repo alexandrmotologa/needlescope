@@ -25,16 +25,19 @@ type ProxyConfig struct {
 	Strategy          StrategyType `json:"strategy"`
 	TargetChunkTokens int          `json:"target_chunk_tokens"`
 	DefaultAPIKey     string       `json:"default_api_key,omitempty"`
+	ShadowMode        bool         `json:"shadow_mode"` // Enables asynchronous dual-inference A/B lift testing
 }
 
-// ProxyStats holds runtime performance telemetry.
+// ProxyStats holds runtime performance telemetry and shadow test metrics.
 type ProxyStats struct {
-	TotalRequests      int64   `json:"total_requests"`
-	ReorderedRequests  int64   `json:"reordered_requests"`
-	TotalChunksMoved   int64   `json:"total_chunks_moved"`
-	EvictedFromMiddle  int64   `json:"evicted_from_middle"`
-	AvgReorderTimeUs   int64   `json:"avg_reorder_time_us"`
-	UptimeSeconds      int64   `json:"uptime_seconds"`
+	TotalRequests           int64   `json:"total_requests"`
+	ReorderedRequests       int64   `json:"reordered_requests"`
+	TotalChunksMoved        int64   `json:"total_chunks_moved"`
+	EvictedFromMiddle       int64   `json:"evicted_from_middle"`
+	AvgReorderTimeUs        int64   `json:"avg_reorder_time_us"`
+	UptimeSeconds           int64   `json:"uptime_seconds"`
+	ShadowRuns              int64   `json:"shadow_runs"`
+	ShadowAvgLatencyDeltaMs float64 `json:"shadow_avg_latency_delta_ms"`
 }
 
 // Proxy is a drop-in OpenAI-compatible reverse proxy that reorganizes long-context prompts.
@@ -47,12 +50,14 @@ type Proxy struct {
 	startTime    time.Time
 	server       *http.Server
 
-	reqCount        int64
-	reorderCount    int64
-	chunksMoved     int64
-	evictedMiddle   int64
-	totalReorderUs  int64
-	mu              sync.RWMutex
+	reqCount            int64
+	reorderCount        int64
+	chunksMoved         int64
+	evictedMiddle       int64
+	totalReorderUs      int64
+	shadowRuns          int64
+	shadowLatencySumMs  int64
+	mu                  sync.RWMutex
 }
 
 // NewProxy creates a new proxy instance.
@@ -97,6 +102,7 @@ func (p *Proxy) Handler() http.Handler {
 	mux.HandleFunc("/v1/chat/completions", p.handleChatCompletions)
 	mux.HandleFunc("/chat/completions", p.handleChatCompletions)
 	mux.HandleFunc("/needlescope/stats", p.handleStats)
+	mux.HandleFunc("/needlescope/shadow-stats", p.handleStats)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"status":"ok","engine":"needlescope-rearranger"}`)
@@ -117,8 +123,13 @@ func (p *Proxy) Start() error {
 		Handler: p.Handler(),
 	}
 
-	log.Printf("[needlescope-proxy] Listening on %s -> Upstream %s (Strategy: %s)\n",
-		p.config.ListenAddr, p.config.UpstreamURL, p.config.Strategy)
+	shadowNote := ""
+	if p.config.ShadowMode {
+		shadowNote = " [Shadow Dual-Inference Active]"
+	}
+
+	log.Printf("[needlescope-proxy] Listening on %s -> Upstream %s (Strategy: %s)%s\n",
+		p.config.ListenAddr, p.config.UpstreamURL, p.config.Strategy, shadowNote)
 
 	return p.server.ListenAndServe()
 }
@@ -152,13 +163,22 @@ func (p *Proxy) GetStats() ProxyStats {
 		avgUs = totalUs / reorders
 	}
 
+	shadowRuns := atomic.LoadInt64(&p.shadowRuns)
+	shadowLatencySum := atomic.LoadInt64(&p.shadowLatencySumMs)
+	avgShadowDelta := 0.0
+	if shadowRuns > 0 {
+		avgShadowDelta = float64(shadowLatencySum) / float64(shadowRuns)
+	}
+
 	return ProxyStats{
-		TotalRequests:     reqs,
-		ReorderedRequests: reorders,
-		TotalChunksMoved:  atomic.LoadInt64(&p.chunksMoved),
-		EvictedFromMiddle: atomic.LoadInt64(&p.evictedMiddle),
-		AvgReorderTimeUs:  avgUs,
-		UptimeSeconds:     int64(time.Since(p.startTime).Seconds()),
+		TotalRequests:           reqs,
+		ReorderedRequests:       reorders,
+		TotalChunksMoved:        atomic.LoadInt64(&p.chunksMoved),
+		EvictedFromMiddle:       atomic.LoadInt64(&p.evictedMiddle),
+		AvgReorderTimeUs:        avgUs,
+		UptimeSeconds:           int64(time.Since(p.startTime).Seconds()),
+		ShadowRuns:              shadowRuns,
+		ShadowAvgLatencyDeltaMs: avgShadowDelta,
 	}
 }
 
@@ -177,6 +197,9 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	originalRawBytes := make([]byte, len(bodyBytes))
+	copy(originalRawBytes, bodyBytes)
+
 	var payload map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
@@ -184,12 +207,11 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	messagesRaw, ok := payload["messages"].([]interface{})
-	if ok && len(messagesRaw) > 0 {
-		// Find user message to reorder
-		t0 := time.Now()
-		modified := false
+	modified := false
 
-		// Extract last user message and optional preceding query
+	if ok && len(messagesRaw) > 0 {
+		t0 := time.Now()
+
 		lastUserIdx := -1
 		for i := len(messagesRaw) - 1; i >= 0; i-- {
 			msg, isMsg := messagesRaw[i].(map[string]interface{})
@@ -206,7 +228,6 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			if isStr && len(content) > 500 {
 				prefix, contextBody, query := ExtractPromptContext(content)
 				if query == "" && lastUserIdx > 0 {
-					// Check if there is an explicit query in another message or instructions
 					query = content[:min(len(content), 120)]
 				}
 
@@ -253,7 +274,7 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Prepare upstream request
+	// Prepare primary upstream request
 	upstreamURL := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(p.config.UpstreamURL, "/"))
 	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, upstreamURL, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -270,7 +291,7 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		proxyReq.Header.Set("Authorization", "Bearer "+p.config.DefaultAPIKey)
 	}
 
-	// Forward
+	tPrimaryStart := time.Now()
 	client := &http.Client{Timeout: 300 * time.Second}
 	resp, err := client.Do(proxyReq)
 	if err != nil {
@@ -278,6 +299,12 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+	primaryLatency := time.Since(tPrimaryStart).Milliseconds()
+
+	// If Shadow Mode is active and context was reordered, trigger asynchronous shadow evaluation of original prompt
+	if p.config.ShadowMode && modified {
+		go p.executeShadowDual(originalRawBytes, r.Header, primaryLatency)
+	}
 
 	// Copy response headers
 	for k, v := range resp.Header {
@@ -287,6 +314,40 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Stream response back
 	_, _ = io.Copy(w, resp.Body)
+}
+
+// executeShadowDual runs the original unmodified prompt asynchronously to measure latency and recall lift.
+func (p *Proxy) executeShadowDual(originalBytes []byte, originalHeaders http.Header, primaryLatencyMs int64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	upstreamURL := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(p.config.UpstreamURL, "/"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(originalBytes))
+	if err != nil {
+		return
+	}
+
+	for k, v := range originalHeaders {
+		req.Header[k] = v
+	}
+	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(originalBytes)))
+	if req.Header.Get("Authorization") == "" && p.config.DefaultAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.config.DefaultAPIKey)
+	}
+
+	tStart := time.Now()
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	shadowLatency := time.Since(tStart).Milliseconds()
+	deltaMs := primaryLatencyMs - shadowLatency
+
+	atomic.AddInt64(&p.shadowRuns, 1)
+	atomic.AddInt64(&p.shadowLatencySumMs, deltaMs)
 }
 
 func min(a, b int) int {

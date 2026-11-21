@@ -13,6 +13,11 @@ Long-Context Attention Degradation Profiler and Semantic Salience Re-Arranger in
 - **Parametric U-Curve Regression**: Fits empirical attention recall to second-order parabolic profiles $R(d) = \alpha (d - 0.5)^2 + \gamma$, quantifying the curvature coefficient $\alpha$ and identifying the critical blind-spot window $[d_{\min}, d_{\max}]$.
 - **Multi-Hop Dependency Reasoning**: Evaluates multi-needle aggregation and chained directional dependencies with adversarial distractors.
 - **Dynamic Salience Re-Arranger**: An inline OpenAI-compatible reverse proxy that parses document chunks, calculates BM25 query salience, and maps relevant text into optimal primacy and recency zones, raising middle-depth recall from ~50% to over 95%.
+- **Boundary Shield for Code & Tables**: Automatically detects and shields Markdown tables (`| ... |`), fenced code blocks (` ```...``` `), and XML structures from being severed mid-chunk.
+- **Shadow Dual-Inference Mode**: Asynchronously evaluates the original unmodified prompt alongside the U-shaped response, calculating real-time recall lift and latency delta on live traffic with zero client disruption.
+- **CI/CD Quality Gate Engine**: CLI command (`needlescope gate`) providing automated SLA assertions for regression testing in GitHub Actions (fails build if middle recall < 80% or degradation delta > 20%).
+- **Standalone HTML Audit Exporter**: Generates self-contained, zero-dependency executive audit reports with embedded vector SVG charts and interactive 2D heatmap tables.
+- **Attention Gradient Spectrum Simulator**: Visual context window timeline in the Web Cockpit projecting chunk movements from degraded attention zones directly into safe boundaries.
 - **Zero-Dependency Web Cockpit**: Embedded HTTP dashboard on port 8585 with interactive 2D heatmaps, vector U-curve charts, and real-time Server-Sent Events (SSE).
 
 ---
@@ -43,17 +48,14 @@ Run a multi-coordinate sweep using the built-in deterministic mock provider (req
 
 ```bash
 needlescope benchmark \
-  --provider mock \
-  --min-tokens 8192 \
-  --max-tokens 65536 \
-  --step-tokens 16384 \
-  --depth-steps 10 \
+  --preset llama-3.1-70b \
   --trials 2 \
-  --type single \
-  --domain finance \
   --output ./reports/eval_matrix.json \
-  --csv ./reports/eval_matrix.csv
+  --csv ./reports/eval_matrix.csv \
+  --html ./reports/attention_audit.html
 ```
+
+Predefined presets are available for `gpt-4o`, `claude-3-5-sonnet`, `llama-3.1-70b`, `gemini-1-5-pro`, and `qwen-2.5-72b`.
 
 To run against a live OpenAI, vLLM, or Ollama endpoint:
 
@@ -76,18 +78,29 @@ needlescope proxy \
   --listen ":8500" \
   --upstream "https://api.openai.com/v1" \
   --strategy u-shaped \
-  --chunk-size 350
+  --chunk-size 350 \
+  --shadow
 ```
 
-Redirect your application requests to `http://localhost:8500/v1/chat/completions`. Incoming context blocks are automatically tokenized, scored via BM25 against the user query, and reorganized into a U-shaped attention layout before forwarding upstream.
+Redirect your application requests to `http://localhost:8500/v1/chat/completions`. Incoming context blocks are automatically tokenized, protected via Boundary Shield (tables and code blocks remain intact), scored via BM25 against the user query, and reorganized into a U-shaped attention layout before forwarding upstream.
 
-The proxy injects inspection headers into every response:
-- `X-Needlescope-Reordered`: `true`
-- `X-Needlescope-Strategy`: `u-shaped`
-- `X-Needlescope-Reorder-Time-Us`: Latency overhead in microseconds (typically < 3000 µs)
-- `X-Needlescope-Evicted-From-Middle`: Count of high-salience chunks moved out of the central valley
+With `--shadow` enabled, the proxy asynchronously executes the original prompt in the background to calculate live recall lift and latency delta without client delay. Real-time statistics are accessible via `GET /needlescope/shadow-stats`.
 
-### 3. Launch the Interactive Web Cockpit
+### 3. Assert CI/CD Attention Quality Gates
+
+Integrate automated regression assertions into your deployment pipelines:
+
+```bash
+needlescope gate \
+  --report ./reports/eval_matrix.json \
+  --min-middle-recall 0.80 \
+  --max-degradation-delta 0.20 \
+  --min-overall-recall 0.85
+```
+
+The command returns exit code `0` on PASS or exit code `1` on FAIL, halting deployments if a new model version exhibits severe middle-valley attention collapse.
+
+### 4. Launch the Interactive Web Cockpit
 
 Start the cockpit on port 8585:
 
@@ -95,9 +108,9 @@ Start the cockpit on port 8585:
 needlescope cockpit --port 8585
 ```
 
-Open `http://localhost:8585` in your browser to inspect 2D heatmaps, view U-curve regression parabolas, run live benchmarks, and test the real-time prompt re-arranger playground.
+Open `http://localhost:8585` in your browser to inspect 2D heatmaps, view U-curve regression parabolas, run live benchmarks, observe the Attention Gradient Spectrum simulator, and test the real-time prompt re-arranger playground.
 
-### 4. Evaluate an Existing Prompt File
+### 5. Evaluate an Existing Prompt File
 
 Analyze an existing long-context enterprise prompt and output the optimized text:
 

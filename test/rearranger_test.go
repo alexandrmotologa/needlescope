@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexandrmotologa/needlescope/pkg/benchmark"
 	"github.com/alexandrmotologa/needlescope/pkg/rearranger"
@@ -34,6 +35,57 @@ func TestChunker_SplitChunks(t *testing.T) {
 		if ch.OriginalDepth < 0 || ch.OriginalDepth > 1.0 {
 			t.Fatalf("chunk %d has invalid original depth %f", i, ch.OriginalDepth)
 		}
+	}
+}
+
+func TestChunker_BoundaryShield(t *testing.T) {
+	tok := benchmark.NewFastTokenizer()
+	chunker := rearranger.NewChunker(tok, 25)
+
+	doc := "Introductory notes on financial metrics.\n\n" +
+		"| Metric | FY25 | FY26 |\n" +
+		"|---|---|---|\n" +
+		"| Net Sales | $400M | $480M |\n" +
+		"| Gross Margin | 62% | 65% |\n\n" +
+		"```python\n" +
+		"def verify_token(key):\n" +
+		"    return key.startswith('SEC-')\n" +
+		"```\n\n" +
+		"Closing remarks on enterprise operations."
+
+	chunks := chunker.SplitChunks(doc)
+	if len(chunks) < 3 {
+		t.Fatalf("expected at least 3 chunks, got %d", len(chunks))
+	}
+
+	tableFound := false
+	codeFound := false
+	for _, ch := range chunks {
+		if strings.Contains(ch.Content, "| Net Sales |") {
+			tableFound = true
+			if !strings.Contains(ch.Content, "| Gross Margin |") {
+				t.Fatalf("Markdown table was split across chunks! Content: %s", ch.Content)
+			}
+			if !ch.IsProtected {
+				t.Fatalf("expected chunk containing table to have IsProtected = true")
+			}
+		}
+		if strings.Contains(ch.Content, "def verify_token") {
+			codeFound = true
+			if !strings.Contains(ch.Content, "return key.startswith") || !strings.Contains(ch.Content, "```") {
+				t.Fatalf("Fenced code block was split across chunks! Content: %s", ch.Content)
+			}
+			if !ch.IsProtected {
+				t.Fatalf("expected chunk containing code to have IsProtected = true")
+			}
+		}
+	}
+
+	if !tableFound {
+		t.Fatalf("table chunk not found")
+	}
+	if !codeFound {
+		t.Fatalf("code chunk not found")
 	}
 }
 
@@ -169,5 +221,60 @@ func TestProxy_ChatCompletionsIntercept(t *testing.T) {
 	stats := proxy.GetStats()
 	if stats.ReorderedRequests != 1 {
 		t.Fatalf("expected 1 reordered request in stats, got %d", stats.ReorderedRequests)
+	}
+}
+
+func TestProxy_ShadowMode(t *testing.T) {
+	upstreamHits := 0
+	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+	}))
+	defer upstreamServer.Close()
+
+	proxy, err := rearranger.NewProxy(rearranger.ProxyConfig{
+		ListenAddr:        ":0",
+		UpstreamURL:       upstreamServer.URL,
+		Strategy:          rearranger.StrategyUShaped,
+		TargetChunkTokens: 50,
+		ShadowMode:        true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+
+	longDoc := strings.Repeat("Enterprise cloud network topology analysis. ", 25) +
+		"\n\nNEEDLE: Target is ALPHA.\n\n" +
+		strings.Repeat("Compliance verification schedules. ", 25) +
+		"\n\nQUERY:\nWhat is the target?"
+
+	reqBody := map[string]interface{}{
+		"model": "mock",
+		"messages": []map[string]string{
+			{"role": "user", "content": longDoc},
+		},
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	proxy.ServeHTTP(w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("proxy returned status %d", w.Result().StatusCode)
+	}
+
+	// Wait briefly for asynchronous shadow goroutine
+	for i := 0; i < 20; i++ {
+		if proxy.GetStats().ShadowRuns > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	stats := proxy.GetStats()
+	if stats.ShadowRuns != 1 {
+		t.Fatalf("expected 1 shadow run, got %d", stats.ShadowRuns)
 	}
 }

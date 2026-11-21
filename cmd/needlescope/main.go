@@ -49,6 +49,8 @@ func main() {
 		runCockpitCmd(os.Args[2:])
 	case "evaluate":
 		runEvaluateCmd(os.Args[2:])
+	case "gate":
+		runGateCmd(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Printf("needlescope version %s (Go runtime)\n", version)
 	default:
@@ -66,6 +68,7 @@ func printUsage() {
 	fmt.Println("  proxy       Start the dynamic semantic salience re-arranger reverse proxy (OpenAI compatible)")
 	fmt.Println("  cockpit     Launch the embedded web dashboard and interactive 2D heatmap on port 8585")
 	fmt.Println("  evaluate    Evaluate and re-order a specific enterprise prompt file")
+	fmt.Println("  gate        Assert CI/CD quality gates on attention degradation reports")
 	fmt.Println("  version     Print version and build details")
 	fmt.Println("\nRun 'needlescope <command> --help' for details on specific options.")
 }
@@ -87,6 +90,8 @@ func runBenchmarkCmd(args []string) {
 	concurrency := fs.Int("concurrency", 4, "Concurrent worker dispatch routines")
 	outputPath := fs.String("output", "", "Optional path to export JSON report")
 	csvPath := fs.String("csv", "", "Optional path to export CSV matrix")
+	htmlPath := fs.String("html", "", "Optional path to export self-contained HTML executive audit report")
+	presetName := fs.String("preset", "", "Predefined frontier model preset: gpt-4o, claude-3-5-sonnet, llama-3.1-70b, gemini-1-5-pro, qwen-2.5-72b")
 	launchCockpit := fs.Bool("cockpit", false, "Launch embedded web cockpit upon completion")
 	cockpitPort := fs.Int("port", 8585, "Cockpit port when --cockpit is enabled")
 
@@ -94,20 +99,39 @@ func runBenchmarkCmd(args []string) {
 
 	// Compute context lengths
 	var lengths []int
-	for l := *minTokens; l <= *maxTokens; l += *stepTokens {
-		lengths = append(lengths, l)
-	}
-	if len(lengths) == 0 {
-		lengths = []int{*minTokens}
-	}
-
-	// Compute depths
 	var depths []float64
-	if *depthSteps <= 1 {
-		depths = []float64{0.0, 0.5, 1.0}
+
+	if *presetName != "" {
+		preset, err := benchmark.GetPreset(*presetName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Preset error: %v\n", err)
+			os.Exit(1)
+		}
+		lengths = preset.ContextLengths
+		for i := 0; i <= preset.DepthSteps; i++ {
+			depths = append(depths, float64(i)/float64(preset.DepthSteps))
+		}
+		if *model == "meta-llama/Llama-3.1-70B-Instruct" && preset.DefaultModel != "" {
+			*model = preset.DefaultModel
+		}
+		if *domain == "finance" && preset.DefaultDomain != "" {
+			*domain = string(preset.DefaultDomain)
+		}
+		fmt.Printf("[needlescope] Loaded preset %s: %s\n", preset.Name, preset.Description)
 	} else {
-		for i := 0; i <= *depthSteps; i++ {
-			depths = append(depths, float64(i)/float64(*depthSteps))
+		for l := *minTokens; l <= *maxTokens; l += *stepTokens {
+			lengths = append(lengths, l)
+		}
+		if len(lengths) == 0 {
+			lengths = []int{*minTokens}
+		}
+
+		if *depthSteps <= 1 {
+			depths = []float64{0.0, 0.5, 1.0}
+		} else {
+			for i := 0; i <= *depthSteps; i++ {
+				depths = append(depths, float64(i)/float64(*depthSteps))
+			}
 		}
 	}
 
@@ -206,6 +230,16 @@ func runBenchmarkCmd(args []string) {
 		}
 	}
 
+	// Export HTML
+	if *htmlPath != "" {
+		_ = os.MkdirAll(filepath.Dir(*htmlPath), 0755)
+		if err := report.SaveHTML(matrixReport, *htmlPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to save HTML report: %v\n", err)
+		} else {
+			fmt.Printf("HTML executive audit report exported to: %s\n", *htmlPath)
+		}
+	}
+
 	// Launch cockpit if requested
 	if *launchCockpit {
 		cockpitServer := cockpit.NewServer(cockpit.ServerConfig{
@@ -225,6 +259,7 @@ func runProxyCmd(args []string) {
 	strategy := fs.String("strategy", "u-shaped", "Attention re-ordering strategy: u-shaped, recency-biased, original")
 	chunkSize := fs.Int("chunk-size", 350, "Target tokens per document chunk")
 	apiKey := fs.String("api-key", os.Getenv("OPENAI_API_KEY"), "Default API key forwarded to upstream")
+	shadowMode := fs.Bool("shadow", false, "Enable asynchronous dual-inference shadow testing to compare original vs reordered recall")
 
 	_ = fs.Parse(args)
 
@@ -234,6 +269,7 @@ func runProxyCmd(args []string) {
 		Strategy:          rearranger.StrategyType(*strategy),
 		TargetChunkTokens: *chunkSize,
 		DefaultAPIKey:     *apiKey,
+		ShadowMode:        *shadowMode,
 	}
 
 	proxy, err := rearranger.NewProxy(cfg)
@@ -347,6 +383,76 @@ func runEvaluateCmd(args []string) {
 	if *output != "" {
 		_ = os.WriteFile(*output, []byte(finalPrompt), 0644)
 		fmt.Printf("Re-ordered prompt written to: %s\n", *output)
+	}
+}
+
+func runGateCmd(args []string) {
+	fs := flag.NewFlagSet("gate", flag.ExitOnError)
+
+	reportFile := fs.String("report", "", "Path to JSON matrix report (required)")
+	minMiddle := fs.Float64("min-middle-recall", 0.80, "Minimum required recall in middle valley (0.35 - 0.65)")
+	maxDelta := fs.Float64("max-degradation-delta", 0.20, "Maximum allowed degradation delta between edges and valley")
+	minOverall := fs.Float64("min-overall-recall", 0.85, "Minimum required overall recall across all coordinates")
+	maxBlindSpot := fs.Float64("max-blindspot-width", 0.15, "Maximum allowed blind spot depth span")
+	jsonOutput := fs.Bool("json", false, "Output assertions as JSON")
+
+	_ = fs.Parse(args)
+
+	if *reportFile == "" {
+		fmt.Fprintln(os.Stderr, "Error: --report is required for gate evaluation")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	data, err := os.ReadFile(*reportFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read report file %s: %v\n", *reportFile, err)
+		os.Exit(1)
+	}
+
+	var rep profiler.MatrixReport
+	if err := json.Unmarshal(data, &rep); err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid JSON in report file: %v\n", err)
+		os.Exit(1)
+	}
+
+	gateCfg := profiler.GateConfig{
+		MinMiddleRecall:     *minMiddle,
+		MaxDegradationDelta: *maxDelta,
+		MinOverallRecall:    *minOverall,
+		MaxBlindSpotWidth:   *maxBlindSpot,
+	}
+
+	result := profiler.EvaluateGate(&rep, gateCfg)
+
+	if *jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(result)
+		if !result.Passed {
+			os.Exit(1)
+		}
+		return
+	}
+
+	fmt.Printf("\n=== needlescope Attention Quality Gate ===\n")
+	fmt.Printf("Model: %s | Evaluated Rules: %d\n\n", rep.Model, len(result.Assertions))
+
+	for _, a := range result.Assertions {
+		tag := "\033[32m[PASS]\033[0m"
+		if !a.Passed {
+			tag = "\033[31m[FAIL]\033[0m"
+		}
+		fmt.Printf("  %s %-32s : %s\n", tag, a.Rule, a.Message)
+	}
+
+	fmt.Println()
+	if result.Passed {
+		fmt.Printf("\033[32m✔ QUALITY GATE PASSED:\033[0m Model meets all attention retention SLA requirements.\n\n")
+		os.Exit(0)
+	} else {
+		fmt.Fprintf(os.Stderr, "\033[31m✘ QUALITY GATE FAILED:\033[0m Model exhibits unacceptable attention degradation.\n\n")
+		os.Exit(1)
 	}
 }
 
